@@ -1,15 +1,6 @@
 #!/usr/bin/python
 # -*- coding:utf8 -*-
 
-'''
-  AlexNet 结构
-  输入图片尺寸为224 * 224
-  5层卷积 + 3层全连接
-  卷积1, 11*11, 步长4, output channel = 96
-  LRN
-  最大池化，3*3， 步长2
-'''
-
 from datetime import datetime
 import math
 import time
@@ -120,7 +111,6 @@ def inference(images):
     bias = tf.Variable(tf.constant(0.0, shape=[4096], dtype=tf.float32, trainable=True, name='bias'))
     fc2 = tf.nn.relu(tf.matmul(fc1, weights) + bias)
     parameters += [weights, bias]
-
 
   # 全连接三
   with tf.name_scope('fc3') as scope:
