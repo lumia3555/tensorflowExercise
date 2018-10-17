@@ -1,9 +1,13 @@
+#!/usr/bin/python
+# -*- coding:utf8 -*-
+
 from tensorflow.examples.tutorials.mnist import input_data
-import tensorflow as tf 
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
+
+import tensorflow as tf 
 sess = tf.InteractiveSession()
 
-# hyper parameters
+
 learning_rate = 1e-4
 training_epochs = 5000
 batch_size = 50
@@ -26,6 +30,7 @@ def conv2d(x, W):
 
 def max_pool_22(x):
   return tf.nn.max_pool(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME')
+
 
 x = tf.placeholder(tf.float32, [None, 784])
 y = tf.placeholder(tf.float32, [None, 10])
