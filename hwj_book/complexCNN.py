@@ -11,38 +11,39 @@ max_steps = 3000
 hatch_size = 128
 data_dir = '/tmp/cifar10_data/cifar-10-batches-bin'
 
+# 初始化权重函数，添加l2正则
 def variable_with_weight_loss(shape, stddev, wl):
   var = tf.Variable(tf.truncated_normal(shape, stddev=stddev))
   if wl is not None:
+    # 添加l2正则
     weight_loss = tf.multiply(tf.nn.l2_loss(var), wl, name='weight_loss')
     tf.add_to_collection('losses', weight_loss)
   return var
 
 cifar10.maybe_download_and_extract()
 
-# generate training set
+# 训练集
 images_train, labels_train = cifar10_input.distorted_inputs(data_dir = data_dir, batch_size = batch_size)
 
-# generate test set
+# 测试集
 images_test, labels_test = cifar10_input.inputs(eval_data = True, data_dir = data_dir, batch_size = batch_size)
 
-# placeholder for inputs
-
+# 图片尺寸24*24，采用rgb则通道数为3
 image_holder = tf.placeholder(tf.float32, [batch_size, 24, 24, 3])
 label_holder = tf.placeholder(tf.float32, [batch_size])
 
-# ------ Phase 1: construct network model, give inference -----------
+# ------ Phase 1: 创建网络模型，给出推测 -----------
 # layer 1 - convolution
-
+# wl=0.0即不对第一层权重实施l2正则
 weight_1 = variable_with_weight_loss(shape=[5,5,3,64], stddev=5e-2, wl=0.0)
 kernel_1 = tf.nn.conv2d(image_holder, weight_1, [1,1,1,1], padding='SAME')
 bias_1 = tf.Variable(tf.constant(0.0, shape=[64]))
 conv_1 = tf.nn.relu(tf.nn.bias_add(kernel_1, bias_1))
 pool_1 = tf.nn.max_pool(conv_1, ksize=[1,3,3,1], strides=[1,2,2,1], padding='SAME')
+# LRN适合ReLU这种没有上边界的激活函数，不适合Sigmoid这种有上下边界的激活函数
 norm_1 = tf.nn.lrn(pool_1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75)
 
 # layer 2 - convolution
-
 weight_2 = variable_with_weight_loss(shape=[5,5,64,64], stddev=5e-2, wl=0.0)
 kernel_2 = tf.nn.conv2d(norm_1, weight_2, [1,1,1,1], padding='SAME')
 bias_2 = tf.Variable(tf.constant(0.1, shape=[64]))
@@ -51,50 +52,52 @@ norm_2 = tf.nn.lrn(conv_2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75)
 pool_2 = tf.nn.max_pool(norm_2, ksize=[1,3,3,1], strides=[1,2,2,1], padding='SAME')
 
 # layer 3 - full connect
-
 reshape = tf.reshape(pool_2, [batch_size, -1])
 dim = reshape.get_shape()[1].value
-print '====='
-print dim
 weight_3 = variable_with_weight_loss(shape=[dim, 384], stddev=0.04, wl=0.004)
 bias_3 = tf.Variable(tf.constant(0.1, shape=[384]))
 local_3 = tf.nn.relu(tf.matmul(reshape, weight_3) + bias_3)
 
 # layer 4 - full connect
-
 weight_4 = variable_with_weight_loss(shape=[384, 192], stddev=0.04, wl=0.004)
 bias_4 = tf.Variable(tf.constant(0.1, shape=[192]))
 local_4 = tf.nn.relu(tf.matmul(local_3, weight_4) + bias_4)
 
 # layer 5 - give inference
-
 weight_5 = variable_with_weight_loss(shape[192, 10], stddev=1/192.0, wl=0.0)
 bias_5 = tf.Variable(tf.constant(0.0, shape=[10]))
+# 只执行了x*W + b，尚未执行softmax
 logits = tf.add(tf.matmul(local_4, weight_5), bias_5)
 
 
-# ------ Phase 2: define loss -----------
+# ------ Phase 2: 定义loss function -----------
 def loss(logits, labels):
   labels = tf.cast(labels, tf.int64)
+  # softmax和cross entropy结合，未执行tf.reduce_mean
   cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
     logits=logits, labels=labels, name='cross_entropy_per_example'
   )
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
 
+  # 添加到losses的collectionzhong
   tf.add_to_collection('losses', cross_entropy_mean)
+
+  # tf.add_n([同样shape的tensor], name='')，返回同样shape的一个tensor
   return tf.add_n(tf.get_collection('losses'), name='total_loss')
 
 loss = loss(logits, label_holder)
 
-# ------ Phase 3: define optimizer -----------
+# ------ Phase 3: 优化器 -----------
 optimizer = tf.train.AdamOptimizer(1e-3).minimize(loss)
 
 
 # ------ Phase 4: train -----------
+# in_top_k -> 求输出结果中top k的准确率
 top_k_op = tf.nn.in_top_k(logits, label_holder, 1)
 sess = tf.InteractiveSession()
 tf.global_variables_initializer().run()
 
+# 启动图片数据增强的线程队列
 tf.train.start_queue_runners()
 
 for step in range(max_steps):
