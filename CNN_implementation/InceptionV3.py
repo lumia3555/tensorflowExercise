@@ -64,7 +64,7 @@ def inception_v3_base(inputs, scope=None):
       stride = 1,
       padding = 'VALID'):
       # 非Inception模块组的卷积层
-      # slim.conv2d(input_tensor, output_channels, kernel_size, strides, padding, scope)
+      # slim.conv2d(input_tensor, output_channels, [kernel_height, kernel_width], strides, padding, scope)
       # 假设输入图片尺寸为299 * 299，则经过三次stride=2的压缩后，图片大小为35*35
       net = slim.conv2d(inputs, 32, [3,3], stride=2, scope='Conv2d_1a_3*3')
       net = slim.conv2d(net, 32, [3,3], scope='Conv2d_2a_3*3')
@@ -75,7 +75,6 @@ def inception_v3_base(inputs, scope=None):
       net = slim.max_pool2d(net, [3,3], stride=2, scope='MaxPool_5a_3*3')
 
     # 模块组部分。Inception V3有三个连续的模块组,每个模块组中有多个Inception Module
-
     with slim.arg_scope(
       [slim.conv2d, slim.max_pool2d, slim.avg_pool2d],
       stride = 1,
@@ -294,11 +293,9 @@ def inception_v3_base(inputs, scope=None):
         # output = 8 * 8 * (320 + 384*2 + 384*2 + 192) = 8 * 8 * 2048
         net = tf.concat([branch_0, branch_1, branch_2, branch_3], 3)
 
-
-      
       return net, end_points
 
-# 全局平均池化
+# 全局平均池化, softmax和Auxiliary Logits
 '''
   num_classes -> 最终需要分类的数量
   is_training -> 是否是训练过程，Batch Normalization和Dropout只在is_training=true时启用
@@ -307,7 +304,6 @@ def inception_v3_base(inputs, scope=None):
   spatial_squeeze -> 是否对输出进行squeeze操作，去除维数为1的维度
   reuse -> 是否对网络和variable进行重复使用
   scope -> 包含了函数默认参数的环境
-
 '''
 def inception_V3(inputs,
   num_classes=1000,
@@ -318,11 +314,16 @@ def inception_V3(inputs,
   reuse=None,
   scope='InceptionV3'):
   with tf.variable_scope(scope, 'InceptionV3', [inputs, num_classes], reuse=reuse) as scope:
-    with slim.arg_scope([slim.batch_norm, slim.dropout], is_training=is_training):
+    with slim.arg_scope(
+      [slim.batch_norm, slim.dropout],
+      is_training=is_training):
       net, end_points = inception_v3_base(inputs, scope)
 
   # 辅助分类节点 - Auxiliary Logits
-  with slim.arg_scope([slim.conv2d, slim.max_pool2d, slim.avg_pool2d], stride=1, padding='SAME'):
+  with slim.arg_scope(
+    [slim.conv2d, slim.max_pool2d, slim.avg_pool2d],
+    stride=1,
+    padding='SAME'):
     # 17*17*768
     aux_logits = end_points['Mixed_6e']
     with tf.variable_scope('AuxLogits'):
@@ -351,6 +352,20 @@ def inception_V3(inputs,
 
   return logits, end_points
 
+# 时间评估
+def time_tensorflow_run():
 
+batch_size = 32
+height, width = 299, 299
+inputs = tf.random_uniform((batch_size, height, width, 3))
+with slim.arg_scope(
+  inception_v3_arg_scope()):
+  logits, end_points = inception_V3(inputs, is_training=False)
+
+init = tf.global_variables_initializer()
+sess = tf.Session()
+sess.run(init)
+num_batches=100
+time_tensorflow_run(sess, logits, 'Forward')
 
 

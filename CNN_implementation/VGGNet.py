@@ -20,11 +20,14 @@ import tensorflow as tf
     dw: strides width
     p: parameters
 '''
+# 定义卷积层创建函数
 def conv_op(input_op, name, kh, kw, n_out, dh, dw, p):
+  # [-1]取最后一维的值，即通道数
   n_in = input_op.get_shape()[-1].value
 
   with tf.name_scope(name) as scope:
     # xavier初始化一个kernel
+    # get_variable和Variable的区别？
     kernel = tf.get_variable(scope + "w",
       shape = [kh, kw, n_in, n_out],
       dtype = tf.float32,
@@ -38,6 +41,7 @@ def conv_op(input_op, name, kh, kw, n_out, dh, dw, p):
     p += [kernel, biases]
     return activation
 
+# 定义全连接层创建函数
 def fc_op(input_op, name, n_out, p):
   n_in = input_op.get_shape()[-1].value
 
@@ -46,10 +50,11 @@ def fc_op(input_op, name, n_out, p):
       shape = [n_in, n_out],
       dtype = tf.float32,
       initializer = tf.contrib.layers.xavier_initializer())
+
     bias_init_value = tf.constant(0.1, shape=[n_out], dtype=tf.float32)
     biases = tf.Variable(bias_init_value, trainable=True, name='b')
 
-    # activation = tf.nn.relu(tf.matmul(input_op, kernel) + biases)
+    # 相当于对input_op和kernel做矩阵乘法，加上biases后再执行ReLU
     activation = tf.nn.relu_layer(input_op, kernel, biases, name=scope)
     p += [kernel, biases]
     return activation
@@ -60,6 +65,7 @@ def mpool_op(input_op, name, kh, kw, dh, dw):
 # ---------- Part2 VGG16网络结构 --------------
 '''
   5段卷积 + 1段全连接
+  输入为224*224
 '''
 def inference_op(input_op, keep_prob):
   p = []
@@ -112,7 +118,47 @@ def inference_op(input_op, keep_prob):
 
   return predictions, softmax, fc8, p
 
+# 时间评估
+def time_tensorflow_run(session, target, feed, info_string):
+  num_steps_burn_in = 10
+  total_duration = 0.0
+  total_duration_squared = 0.0
 
+  for i in range(num_batches + num_steps_burn_in):
+    start_time = time.time()
+    _ = session.run(target, feed_dict=feed)
+    duration = time.time() - start_time
+    if i >= num_steps_burn_in:
+      if not i % 10:
+        print('%s: step :%d, duration =%.3f' %(datetime.now(), i - num_steps_burn_in, duration))
+      total_duration += duration
+      total_duration_squared += duration * duration
+    
+  mn = total_duration / num_batches
+  vr = total_duration_squared / num_batches - mn * mn
+  sd = math.sqrt(vr)
+  print('%s: %s across %d steps, %.3f +/- %.3f sec / batch' %(datetime.now(), info_string, num_batches, mn, sd))
+
+# 定义主函数
+def run_benchmark():
+  with tf.Graph().as_default():
+    image_size = 224
+    images = tf.Variable(tf.random_normal([batch_size, image_size, image_size, 3], dtype=tf.float32, stddev=1e-1))
+    keep_prob = tf.placeholder(tf.float32)
+    predictions, softmax, fc8, p = inference_op(images, keep_prob)
+
+    init = tf.global_variables_initializer()
+    sess = tf.Session()
+    sess.run(init)
+
+    time_tensorflow_run(sess, predictions, {keep_prob: 1.0}, "Forward")
+    objective = tf.nn.l2_loss(fc8)
+    grad = tf.gradients(objective, p)
+    time_tensorflow_run(sess, grad, 'Forward-backward')
+
+batch_size = 32
+num_batches = 100
+run_benchmark()
 
 
 

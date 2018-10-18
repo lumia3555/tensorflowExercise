@@ -24,9 +24,7 @@ class Block(collections.namedtuple('Block', ['scope', 'unit_fn', 'args'])):
     第三层输出通道数256
     前两层输出通道数64
     中间层步长为3 
-  这个残差学习单元结构即为[(1*1/s1, 64), (3*3/s2, 64), (1*1/s1, 256)] 
-
-这TMD什么意思啊                                                 
+  这个残差学习单元结构即为[(1*1/s1, 64), (3*3/s2, 64), (1*1/s1, 256)]                                   
 '''
 
 # 降采样，factor为1则返回输入，否则执行1*1的最大池化，步长为传入的factor
@@ -151,11 +149,16 @@ def resnet_v2(inputs,
     end_points_collection = sc.original_name_scope + '_end_points'
 
     # 设定默认参数
-    with slim.arg_scope([slim.conv2d, bottleneck, stack_blocks_dense], outputs_collections=end_points_collection):
+    with slim.arg_scope(
+      [slim.conv2d, bottleneck, stack_blocks_dense],
+      outputs_collections=end_points_collection):
       net = inputs
       # 如果设置为true,手动加上前面的7*7卷积和3*3最大池化
       if include_root_block:
-        with slim.arg_scope([slim.conv2d], activation_fn=None, normalizer_fn=None):
+        with slim.arg_scope(
+          [slim.conv2d],
+          activation_fn=None,
+          normalizer_fn=None):
           net = conv2d_same(net, 64, 7, stride=2, scope='conv1')
         net = slim.max_pool2d(net, [3,3], stride=2, scope='pool1')
 
@@ -238,3 +241,17 @@ def resnet_v2_200(inputs,
   ]
   return resnet_v2(inputs, blocks, num_classes, global_pool, include_root_block=True, reuse=reuse, scope=scope)
 
+def time_tensorflow_run(session, inputs, name):
+
+batch_size = 32
+height, width = 224, 224
+inputs = tf.random_uniform((batch_size, height, width, 3))
+with slim.arg_scope(
+  resnet_arg_scope(is_training=False)):
+  net, end_points = resnet_v2_152(inputs, 1000)
+
+init = tf.global_variables_initializer()
+sess = tf.Session()
+sess.run(init)
+num_batches = 100
+time_tensorflow_run(sess, net, "Forward")
